@@ -1,0 +1,28 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+.pytest_cache/
+.ipynb_checkpoints/
+
+# Secrets
+.env
+*.pem
+*accessKeys*.csv
+
+# DVC-managed data and pipeline outputs
+/data/
+/experiment_info.json
+/notebooks/reddit_preprocessing.csv
+
+# MLflow local tracking
+/mlruns/
+/mlartifacts/
+/mlflow.db
+
+# Logs and generated plots
+*.log
+confusion_matrix_*.png
+/lgbm_model.pkl
+/tfidf_vectorizer.pkl

@@ -1,0 +1,107 @@
+name: CI/CD
+
+on:
+  push:
+    branches:
+      - main
+    paths-ignore:
+      - 'README.md'
+      - 'notebooks/**'
+
+permissions:
+  contents: read
+
+jobs:
+  integration:
+    name: Continuous Integration
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt pytest==8.3.3
+
+      - name: Run unit tests
+        run: pytest
+
+      - name: Syntax-check the Chrome extension
+        run: for f in yt-chrome-plugin-frontend/*.js; do node --check "$f"; done
+
+  build-and-push-ecr-image:
+    name: Continuous Delivery
+    needs: integration
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      # The model files are DVC outputs, kept out of Git; the image needs them
+      - name: Pull the trained model from the DVC remote
+        run: |
+          pip install dvc==3.53.0 dvc-s3==3.2.0 pathspec==0.12.1
+          dvc pull lgbm_model.pkl tfidf_vectorizer.pkl
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build, tag, and push image to Amazon ECR
+        env:
+          IMAGE: ${{ steps.login-ecr.outputs.registry }}/${{ secrets.ECR_REPOSITORY_NAME }}
+        run: |
+          docker build -t "$IMAGE:${{ github.sha }}" -t "$IMAGE:latest" .
+          docker push --all-tags "$IMAGE"
+
+  continuous-deployment:
+    name: Continuous Deployment
+    needs: build-and-push-ecr-image
+    runs-on: self-hosted
+    env:
+      CONTAINER: yt-sentiment
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Pull the new image
+        env:
+          IMAGE: ${{ steps.login-ecr.outputs.registry }}/${{ secrets.ECR_REPOSITORY_NAME }}:${{ github.sha }}
+        run: docker pull "$IMAGE"
+
+      # `-e YOUTUBE_API_KEY` with no value copies it from the step env, keeping the key out of the command line
+      - name: Replace the running container
+        env:
+          IMAGE: ${{ steps.login-ecr.outputs.registry }}/${{ secrets.ECR_REPOSITORY_NAME }}:${{ github.sha }}
+          YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
+        run: |
+          docker rm -f "$CONTAINER" 2>/dev/null || true
+          docker run -d --name "$CONTAINER" --restart unless-stopped -p 8080:8080 -e YOUTUBE_API_KEY "$IMAGE"
+
+      - name: Remove unused images
+        run: docker image prune -af

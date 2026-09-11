@@ -1,0 +1,17 @@
+.yts-badge {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 0 8px;
+  border-radius: 999px;
+  font-family: Roboto, Arial, sans-serif;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 18px;
+  color: #fff;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+
+.yts-badge--positive { background: #22a06b; }
+.yts-badge--neutral { background: #3b82f6; }
+.yts-badge--negative { background: #e5484d; }

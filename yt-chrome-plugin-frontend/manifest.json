@@ -1,0 +1,25 @@
+{
+  "manifest_version": 3,
+  "name": "YouTube Sentiment Insights",
+  "version": "2.0.0",
+  "description": "Analyzes YouTube video comments for sentiment.",
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "YouTube Sentiment Insights"
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://www.youtube.com/*"],
+      "js": ["config.js", "content.js"],
+      "css": ["content.css"],
+      "run_at": "document_idle"
+    }
+  ],
+  "options_page": "options.html",
+  "permissions": ["activeTab", "storage"],
+  "host_permissions": ["http://localhost:8080/*", "http://127.0.0.1:8080/*"],
+  "optional_host_permissions": ["http://*/*", "https://*/*"]
+}

@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>YouTube Comment Insights</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <header>
+    <h1>YouTube Comment Insights</h1>
+    <a href="#" id="open-options">Settings</a>
+  </header>
+  <p id="status" class="status">Loading…</p>
+
+  <main id="results" hidden>
+    <section>
+      <h2>Comment Analysis Summary</h2>
+      <div class="metrics">
+        <div class="metric"><span class="metric-title">Total Comments</span><span class="metric-value" id="metric-total"></span></div>
+        <div class="metric"><span class="metric-title">Unique Commenters</span><span class="metric-value" id="metric-unique"></span></div>
+        <div class="metric"><span class="metric-title">Avg Comment Length</span><span class="metric-value" id="metric-length"></span></div>
+        <div class="metric"><span class="metric-title">Avg Sentiment Score</span><span class="metric-value" id="metric-score"></span></div>
+      </div>
+    </section>
+
+    <section>
+      <h2>Sentiment Breakdown</h2>
+      <p class="hint">Click a box to read those comments.</p>
+      <div class="sentiment-boxes">
+        <button class="sentiment-box" data-sentiment="1"><span class="pct"></span><span class="label">Positive</span><span class="count"></span></button>
+        <button class="sentiment-box" data-sentiment="0"><span class="pct"></span><span class="label">Neutral</span><span class="count"></span></button>
+        <button class="sentiment-box" data-sentiment="-1"><span class="pct"></span><span class="label">Negative</span><span class="count"></span></button>
+      </div>
+      <img id="pie-chart" alt="Pie chart of the sentiment distribution" hidden>
+    </section>
+
+    <section id="comments-section">
+      <div class="section-header">
+        <h2 id="comments-title">Top 25 Comments</h2>
+        <button id="clear-filter" class="link-button" hidden>Show top 25</button>
+      </div>
+      <ul id="comment-list" class="comment-list"></ul>
+    </section>
+
+    <section>
+      <h2>Sentiment Trend Over Time</h2>
+      <img id="trend-graph" alt="Line chart of each sentiment's share over time" hidden>
+    </section>
+
+    <section>
+      <h2>Comment Word Cloud</h2>
+      <img id="wordcloud" alt="Word cloud of the most frequent comment words" hidden>
+    </section>
+  </main>
+
+  <script src="config.js"></script>
+  <script src="popup.js"></script>
+</body>
+</html>

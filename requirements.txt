@@ -1,0 +1,14 @@
+# Runtime dependencies for the Flask API (installed in the Docker image)
+Flask==3.0.3
+Flask-Cors==5.0.0
+gunicorn==23.0.0; sys_platform != "win32"
+lightgbm==4.5.0
+scikit-learn==1.5.2
+numpy==2.1.2
+pandas==2.2.3
+matplotlib==3.9.2
+wordcloud==1.9.3
+nltk==3.9.1
+mlflow-skinny==2.17.0
+requests==2.32.3
+python-dotenv==1.0.1

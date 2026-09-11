@@ -1,0 +1,14 @@
+.git
+.github
+.venv
+.dvc/cache
+.env
+data
+mlruns
+mlartifacts
+mlflow.db
+notebooks
+tests
+yt-chrome-plugin-frontend
+*.log
+**/__pycache__
