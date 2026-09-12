@@ -4,6 +4,15 @@ import os
 import pickle
 import re
 
+# torch must be imported before pandas: on Windows, pandas loads DLLs that make torch's own
+# initialisation fail ("DLL initialization routine failed" on c10.dll). Skipped when torch is not
+# installed, which is the case for the CI test job and the LightGBM-only setups.
+if os.getenv('MODEL_SOURCE', 'transformer') == 'transformer':
+    try:
+        import torch  # noqa: F401
+    except ImportError:
+        pass
+
 import matplotlib
 
 matplotlib.use('Agg')  # Non-interactive backend: charts are rendered to PNG bytes only
@@ -18,6 +27,7 @@ from matplotlib.figure import Figure
 from wordcloud import WordCloud
 
 from src.data.text_cleaning import preprocess_comment
+from src.model.predictors import DEFAULT_TRANSFORMER_MODEL, SklearnPredictor, TransformerPredictor
 
 load_dotenv()
 
@@ -58,17 +68,20 @@ def load_registry_model(model_name, alias):
     return model, vectorizer
 
 
-def load_configured_model():
-    """Pick the model source from MODEL_SOURCE: 'local' pickles (default) or the MLflow 'registry'."""
-    if os.getenv('MODEL_SOURCE', 'local') == 'registry':
-        return load_registry_model(
+def load_configured_predictor():
+    """Pick the predictor from MODEL_SOURCE: 'transformer' (default), 'local' pickles, or MLflow 'registry'."""
+    source = os.getenv('MODEL_SOURCE', 'transformer')
+    if source == 'transformer':
+        return TransformerPredictor(os.getenv('TRANSFORMER_MODEL', DEFAULT_TRANSFORMER_MODEL))
+    if source == 'registry':
+        return SklearnPredictor(*load_registry_model(
             os.getenv('MODEL_NAME', 'yt_chrome_plugin_model'),
             os.getenv('MODEL_ALIAS', 'staging'),
-        )
-    return load_local_model(
+        ))
+    return SklearnPredictor(*load_local_model(
         os.getenv('MODEL_PATH', os.path.join(APP_DIR, 'lgbm_model.pkl')),
         os.getenv('VECTORIZER_PATH', os.path.join(APP_DIR, 'tfidf_vectorizer.pkl')),
-    )
+    ))
 
 
 def fetch_youtube_comments(video_id, api_key, max_comments):
@@ -130,18 +143,17 @@ def trend_frequency(timestamps):
     return 'ME', 'Monthly', '%Y-%m'
 
 
-def create_app(model=None, vectorizer=None, youtube_api_key=None):
-    """Build the Flask app. Tests inject a model, vectorizer and API key; production loads them from config."""
-    if model is None or vectorizer is None:
-        model, vectorizer = load_configured_model()
+def create_app(predictor=None, youtube_api_key=None):
+    """Build the Flask app. Tests inject a predictor and API key; production loads them from config."""
+    if predictor is None:
+        predictor = load_configured_predictor()
     api_key = youtube_api_key if youtube_api_key is not None else os.getenv('YOUTUBE_API_KEY', '')
 
     app = Flask(__name__)
     CORS(app)  # The extension calls from a chrome-extension:// origin; no cookies or auth are involved
 
     def predict_sentiments(texts):
-        features = vectorizer.transform([preprocess_comment(text) for text in texts])
-        return [int(prediction) for prediction in model.predict(features)]
+        return predictor.predict(texts)
 
     def json_list(key):
         """Return (items, None) for a non-empty JSON list under key, or (None, error_response)."""
@@ -158,7 +170,11 @@ def create_app(model=None, vectorizer=None, youtube_api_key=None):
 
     @app.route('/health')
     def health():
-        return jsonify({'status': 'ok', 'youtube_api_key_configured': bool(api_key)})
+        return jsonify({
+            'status': 'ok',
+            'model': predictor.name,
+            'youtube_api_key_configured': bool(api_key),
+        })
 
     @app.route('/comments')
     def comments():

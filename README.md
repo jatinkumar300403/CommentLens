@@ -4,9 +4,10 @@ A Chrome extension that reads the comments on any YouTube video and shows how vi
 the share of positive, neutral and negative comments, a trend over time, a word cloud, and a sentiment
 badge on every comment on the page.
 
-Behind it sits an MLOps pipeline: a LightGBM classifier on TF-IDF features, trained by a DVC pipeline,
-tracked and registered in MLflow, served by a Flask API in Docker, and deployed to AWS EC2 through
-GitHub Actions.
+Predictions come from a pretrained multilingual model trained on social media text, so emoji, slang,
+hyperbole and Hinglish are read correctly. The course's own LightGBM + TF-IDF classifier is still built
+by a DVC pipeline, tracked and registered in MLflow, and can be served instead with one environment
+variable. The API runs in Docker and deploys to AWS EC2 through GitHub Actions.
 
 Based on the [YouTube Sentiment Insights course](https://www.youtube.com/watch?v=gwNPV882tkc) and its
 [reference repo](https://github.com/entbappy/End-to-end-Youtube-Sentiment).
@@ -24,10 +25,30 @@ flowchart LR
   B -- /predict --> API
   P -- /comments, /predict_with_timestamps, charts --> API
   API[Flask API] -- commentThreads --> YT[(YouTube Data API)]
-  API -- loads --> M[(LightGBM + TF-IDF)]
-  DVC[DVC pipeline] -- trains --> M
+  API -- loads --> M[(Served model:<br/>transformer by default)]
+  DVC[DVC pipeline] -- trains --> L[(LightGBM + TF-IDF)]
+  L -. MODEL_SOURCE=local/registry .-> M
   DVC -- logs & registers --> MLF[(MLflow)]
 ```
+
+## Why the served model is not the course's LightGBM
+
+Tested on a real video, the course's model called enthusiastic comments negative. Its vocabulary is
+1,000 words learned from Indian political Reddit threads, so "success" was not even in it, and a
+bag-of-words model reads "killed it", "insane" and "lost interest in any other movie" literally.
+
+Measured on 16 hand-labelled comments (the failing ones plus clear positives, negatives and questions):
+
+| | Correct | Emoji only ("🔥🔥🔥") | Hinglish ("bakwas video") |
+|---|---|---|---|
+| LightGBM + TF-IDF | 5 / 16 | Neutral ✗ | Neutral ✗ |
+| `twitter-xlm-roberta-base-sentiment` | 14 / 16 | Positive ✓ | Negative ✓ |
+
+The transformer classifies 500 comments in about 16 seconds on a laptop CPU (32 ms each). It still
+misses praise phrased as criticism, such as "completely lost interest in any other movie".
+
+The LightGBM pipeline is kept: it is the course's subject, it trains in a minute, and it stays
+available through `MODEL_SOURCE`.
 
 ## Changes from the reference repo
 
@@ -123,8 +144,15 @@ and paste the key after `YOUTUBE_API_KEY=` in `.env`. Never commit `.env`.
 python app.py
 ```
 
-The API listens on http://localhost:8080. Set `MODEL_SOURCE=registry` to load the model from MLflow
-instead of the local pickles.
+The API listens on http://localhost:8080. On first start it downloads the transformer (~1.1 GB) into
+the Hugging Face cache; later starts read it from disk. `MODEL_SOURCE` in `.env` chooses what serves
+predictions:
+
+| `MODEL_SOURCE` | Serves |
+|---|---|
+| `transformer` (default) | Pretrained multilingual model named by `TRANSFORMER_MODEL` |
+| `local` | `lgbm_model.pkl` + `tfidf_vectorizer.pkl` from `dvc repro` |
+| `registry` | The MLflow-registered LightGBM model and the vectorizer logged with it |
 
 **6. Extension**
 
@@ -148,7 +176,9 @@ docker build -t yt-sentiment .
 docker run --rm -p 8080:8080 --env-file .env yt-sentiment
 ```
 
-The image needs `lgbm_model.pkl` and `tfidf_vectorizer.pkl`, so run `dvc repro` first.
+Run `dvc repro` first: the image copies `lgbm_model.pkl` and `tfidf_vectorizer.pkl` for the `local`
+model source. The build installs CPU-only PyTorch and bakes the transformer into the image, so it
+downloads about 2 GB and the finished image is roughly 2.5 GB.
 
 ## Deploy to AWS with CI/CD
 
@@ -202,7 +232,7 @@ EC2 bills by the hour while the instance runs: stop it when you're not using it,
 
 | Method | Path | Body / query | Returns |
 |---|---|---|---|
-| GET | `/health` | | `{status, youtube_api_key_configured}` |
+| GET | `/health` | | `{status, model, youtube_api_key_configured}` |
 | GET | `/comments` | `?video_id=…&max_comments=500` | Top-level comments (most relevant first) |
 | POST | `/predict` | `{"comments": ["text", …]}` | `[{comment, sentiment}]` |
 | POST | `/predict_with_timestamps` | `{"comments": [{"text", "timestamp"}]}` | `[{comment, sentiment, timestamp}]` |
@@ -214,7 +244,7 @@ Sentiment is `1` positive, `0` neutral, `-1` negative. Requests are capped at 1,
 
 ## A note on the training data
 
-The model is trained on a public Reddit dataset, mostly Indian political discussion, used as a
-stand-in for YouTube comments. It works best on similar comments and will label many comments on
-other topics (tech tutorials, music) as neutral. For a real channel, collect and label its own
-comments and retrain: the pipeline is unchanged, only the data source in `src/data/data_ingestion.py`.
+The LightGBM path is trained on a public Reddit dataset, mostly Indian political discussion, used as a
+stand-in for YouTube comments. That mismatch is why the served model is the pretrained one instead.
+To make the LightGBM path work on your own channel, collect and label its comments and retrain: the
+pipeline is unchanged, only the data source in `src/data/data_ingestion.py`.

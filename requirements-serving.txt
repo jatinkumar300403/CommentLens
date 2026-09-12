@@ -1,0 +1,8 @@
+# Serving dependencies for the transformer predictor (installed in the Docker image).
+# The Dockerfile installs these from the CPU-only PyTorch index; the default Linux build of torch
+# pulls in CUDA libraries that add roughly 2 GB to the image.
+-r requirements.txt
+torch==2.14.0
+transformers==5.17.0
+sentencepiece==0.2.2
+safetensors==0.8.0

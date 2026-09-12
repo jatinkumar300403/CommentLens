@@ -1,4 +1,3 @@
-import numpy as np
 import pytest
 
 from app import create_app
@@ -6,23 +5,17 @@ from app import create_app
 PNG_SIGNATURE = b'\x89PNG\r\n\x1a\n'
 
 
-class PassThroughVectorizer:
-    """Stands in for TF-IDF: hands the preprocessed text straight to the model."""
+class KeywordPredictor:
+    """Stands in for the real model: 'good' -> positive, 'bad' -> negative, anything else neutral."""
 
-    def transform(self, texts):
-        return list(texts)
-
-
-class KeywordModel:
-    """Stands in for LightGBM: 'good' -> positive, 'bad' -> negative, anything else neutral."""
+    name = 'stub'
 
     def predict(self, texts):
-        return np.array([1 if 'good' in t else -1 if 'bad' in t else 0 for t in texts])
+        return [1 if 'good' in t.lower() else -1 if 'bad' in t.lower() else 0 for t in texts]
 
 
 def make_client(api_key='test-key'):
-    app = create_app(model=KeywordModel(), vectorizer=PassThroughVectorizer(), youtube_api_key=api_key)
-    return app.test_client()
+    return create_app(predictor=KeywordPredictor(), youtube_api_key=api_key).test_client()
 
 
 @pytest.fixture
