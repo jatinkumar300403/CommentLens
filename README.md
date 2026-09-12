@@ -50,6 +50,29 @@ misses praise phrased as criticism, such as "completely lost interest in any oth
 The LightGBM pipeline is kept: it is the course's subject, it trains in a minute, and it stays
 available through `MODEL_SOURCE`.
 
+### Known limitation
+
+Measured again on 300 real comments from a motivational video, with 59 of them hand-labelled, the
+transformer is much better than LightGBM but still wrong often. It calls 24% of the comments negative
+where the true share is about 3%: of 22 comments it labelled negative, 1 actually was.
+
+It scores the emotional tone of the words rather than the commenter's attitude to the video, and on
+emotional content those are opposites:
+
+| Comment | Reality | Model |
+|---|---|---|
+| "I'm literally crying😭😭😭😭" | praise | negative |
+| "The amount of goosebumps I got... is insaneee" | praise | negative |
+| "i am suffering from social anxiety, i wish i had your confidence, i just love you" | praise | negative |
+
+Two cheap mitigations, neither applied: predicting negative only above 80% confidence lifts accuracy on
+that labelled set from 51% to 66%, and the English-only `twitter-roberta-base-sentiment-latest` reaches
+71%. On the same set, calling every comment positive scores 81% — so these models add little on this
+kind of video.
+
+Fixing it properly takes a model that reasons about intent (an LLM reading each comment), or a
+classifier trained on YouTube comments labelled for attitude rather than mood.
+
 ## Changes from the reference repo
 
 **Bugs fixed**
