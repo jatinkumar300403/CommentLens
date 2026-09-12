@@ -99,6 +99,27 @@ classifier trained on YouTube comments labelled for attitude rather than mood.
 - Coloured badge on each comment on the YouTube page: green positive, blue neutral, red negative.
 - Clickable positive / neutral / negative boxes in the popup that list the matching comments.
 
+## Experiment results
+
+The notebooks reproduce the course's experiments, on the Reddit test split. Each answer below is what
+the measurements support, not what the video asserts:
+
+| # | Question | Answer |
+|---|---|---|
+| 1 | Baseline | Bag of words + Random Forest: 65.1% accuracy, but negative-class recall 0.01 |
+| 2 | Bag of words or TF-IDF, and which n-grams? | All six combinations land within 0.9 points (64.4–65.3%) — effectively a tie |
+| 3 | How many features? | 1,000 wins clearly: 66.2% accuracy and negative recall 0.13, against 0.01 at 10,000 |
+| 4 | Which imbalance fix? | All but one land near 67% and lift negative recall to ~0.45; SMOTE-ENN collapses to 43% |
+| 5 | Which algorithm? (30 Optuna trials each) | XGBoost 78.6%, logistic regression 77.4%, Naive Bayes 71.8%, random forest 69.3%, decision tree 66.2%, KNN 48.7% |
+| 6 | LightGBM, tuned properly (100 trials) | **78.7%**, negative recall 0.61 |
+| 7 | Does stacking help? | No: 76.8%, below LightGBM alone |
+
+Experiments 5 and 6 tune against a validation split carved out of the training data, so the test set is
+scored once. The original notebooks tuned on the test set itself and, in experiment 6, fitted TF-IDF and
+SMOTE before splitting, which leaked test rows into training.
+
+Remember that these numbers describe the Reddit data, not YouTube comments — see the known limitation above.
+
 ## Project layout
 
 ```
