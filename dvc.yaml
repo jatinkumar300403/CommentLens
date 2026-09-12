@@ -24,11 +24,7 @@ stages:
     - data/interim/train_processed.csv
     - src/model/model_building.py
     params:
-    - model_building.max_features
-    - model_building.ngram_range
-    - model_building.learning_rate
-    - model_building.max_depth
-    - model_building.n_estimators
+    - model_building
     outs:
     - lgbm_model.pkl
     - tfidf_vectorizer.pkl

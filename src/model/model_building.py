@@ -82,20 +82,18 @@ def apply_tfidf(train_data: pd.DataFrame, max_features: int, ngram_range: tuple)
         raise
 
 
-def train_lgbm(X_train: np.ndarray, y_train: np.ndarray, learning_rate: float, max_depth: int, n_estimators: int) -> lgb.LGBMClassifier:
-    """Train a LightGBM model."""
+def train_lgbm(X_train: np.ndarray, y_train: np.ndarray, model_params: dict) -> lgb.LGBMClassifier:
+    """Train a LightGBM model with the tuned hyperparameters from params.yaml."""
     try:
         best_model = lgb.LGBMClassifier(
             objective='multiclass',
             num_class=3,
             metric="multi_logloss",
-            is_unbalance=True,
-            class_weight="balanced",
-            reg_alpha=0.1,  # L1 regularization
-            reg_lambda=0.1,  # L2 regularization
-            learning_rate=learning_rate,
-            max_depth=max_depth,
-            n_estimators=n_estimators
+            class_weight="balanced",  # negative comments are only ~22% of the data
+            subsample_freq=1,  # LightGBM ignores subsample unless this is set
+            random_state=42,
+            verbose=-1,
+            **model_params
         )
         best_model.fit(X_train, y_train)
         logger.debug('LightGBM model training completed')
@@ -132,9 +130,9 @@ def main():
         max_features = params['model_building']['max_features']
         ngram_range = tuple(params['model_building']['ngram_range'])
 
-        learning_rate = params['model_building']['learning_rate']
-        max_depth = params['model_building']['max_depth']
-        n_estimators = params['model_building']['n_estimators']
+        # Everything else under model_building is passed straight to LightGBM
+        model_params = {name: value for name, value in params['model_building'].items()
+                        if name not in ('ngram_range', 'max_features')}
 
         # Load the preprocessed training data from the interim directory
         train_data = load_data(os.path.join(root_dir, 'data/interim/train_processed.csv'))
@@ -143,7 +141,7 @@ def main():
         X_train_tfidf, y_train = apply_tfidf(train_data, max_features, ngram_range)
 
         # Train the LightGBM model using hyperparameters from params.yaml
-        best_model = train_lgbm(X_train_tfidf, y_train, learning_rate, max_depth, n_estimators)
+        best_model = train_lgbm(X_train_tfidf, y_train, model_params)
 
         # Save the trained model in the root directory
         save_model(best_model, os.path.join(root_dir, 'lgbm_model.pkl'))
