@@ -13,7 +13,7 @@ REGION="${REGION:-us-central1}"
 AR_REPO="${AR_REPO:-yt-sentiment}"
 SERVICE="${SERVICE:-yt-sentiment-api}"
 DVC_BUCKET="${DVC_BUCKET:-${PROJECT_ID}-dvc}"
-SECRET="${SECRET:-youtube-api-key}"
+SECRET="youtube-api-key"  # fixed: .github/workflows/cicd.yaml refers to this name
 POOL="github"
 PROVIDER="yt-sentiment-repo"
 
@@ -73,7 +73,8 @@ Setup complete. Add these as GitHub repository variables
   GCP_RUNTIME_SA      $RUNTIME_SA
   GCP_AR_REPO         $AR_REPO
   CLOUD_RUN_SERVICE   $SERVICE
-  YOUTUBE_KEY_SECRET  $SECRET
+
+Your YouTube API key stays in Secret Manager. Never put it in a GitHub variable: variables appear in public logs.
 
 Then, on your own machine, point DVC at the bucket and upload the trained model:
 

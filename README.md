@@ -277,8 +277,10 @@ the billing account (*Billing → Budgets & alerts*) before you deploy.
    account that can only read the YouTube key, a deployer service account for GitHub Actions, and a
    Workload Identity Federation pool that trusts only your repository. It asks for your YouTube API key
    once and stores it in Secret Manager. Re-running it is safe.
-4. **Repository variables.** The script prints eight values. Add each one under *Settings → Secrets and
-   variables → Actions → Variables*; none of them are secret.
+4. **Repository variables.** The script prints seven values. Add each one under *Settings → Secrets and
+   variables → Actions → Variables*; none of them are secret. Your YouTube API key is not one of them: it
+   stays in Secret Manager. Never put a key in a repository variable, because variables appear in the
+   public workflow logs.
 5. **Upload the model to the DVC remote** from this project on your machine. This needs the
    [gcloud CLI](https://cloud.google.com/sdk/docs/install), signed in once:
    ```bash
