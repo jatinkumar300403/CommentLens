@@ -31,5 +31,6 @@ RUN useradd --create-home appuser
 USER appuser
 
 EXPOSE 8080
+# Listen on $PORT, which Cloud Run sets (8080 when run anywhere else).
 # One worker: each holds its own copy of the model in memory. Threads handle concurrent requests.
-CMD ["gunicorn", "--bind", "0.0.0.0:8080", "--workers", "1", "--threads", "4", "--timeout", "180", "--preload", "app:create_app()"]
+CMD ["sh", "-c", "exec gunicorn --bind 0.0.0.0:${PORT:-8080} --workers 1 --threads 4 --timeout 180 --preload 'app:create_app()'"]
