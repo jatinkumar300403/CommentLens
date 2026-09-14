@@ -1,0 +1,4 @@
+# These run on Linux (Cloud Shell, CI runners, inside the container), where CRLF endings break them.
+# Pin LF here so it doesn't depend on each machine's core.autocrlf setting.
+*.sh text eol=lf
+Dockerfile text eol=lf
