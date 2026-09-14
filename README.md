@@ -129,6 +129,7 @@ Remember that these numbers describe the Reddit data, not YouTube comments — s
 │   ├── data/                     ingestion, preprocessing, shared text cleaning
 │   └── model/                    training, evaluation (MLflow), registration
 ├── notebooks/                    EDA and experiments 1–7
+├── scripts/bake_model.py         saves a single copy of the transformer for the Docker image
 ├── tests/                        pytest suite for the API and preprocessing
 ├── yt-chrome-plugin-frontend/    Chrome extension (Manifest V3)
 └── Dockerfile
@@ -221,8 +222,19 @@ docker run --rm -p 8080:8080 --env-file .env yt-sentiment
 ```
 
 Run `dvc repro` first: the image copies `lgbm_model.pkl` and `tfidf_vectorizer.pkl` for the `local`
-model source. The build installs CPU-only PyTorch and bakes the transformer into the image, so it
-downloads about 2 GB and the finished image is roughly 2.5 GB.
+model source.
+
+The first build takes about 5 minutes. It installs CPU-only PyTorch and bakes one copy of the
+transformer into the image: the Hub repo ships the weights twice, and `scripts/bake_model.py` keeps
+a single copy. Measured on the built image:
+
+| | |
+|---|---|
+| Image size | 1.45 GB by `docker image inspect` (Docker Desktop's image list shows ~4.5 GB because it counts compressed and unpacked copies) |
+| Ready after `docker run` | ~10 seconds |
+| Memory while serving | ~1.5 GB |
+| Network needed to start | None: the model is baked in and Hugging Face offline mode is on |
+| Runs as | `appuser`, not root |
 
 ## Deploy to AWS with CI/CD
 
