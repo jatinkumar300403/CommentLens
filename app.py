@@ -27,7 +27,13 @@ from matplotlib.figure import Figure
 from wordcloud import WordCloud
 
 from src.data.text_cleaning import preprocess_comment
-from src.model.predictors import DEFAULT_TRANSFORMER_MODEL, SklearnPredictor, TransformerPredictor
+from src.model.predictors import (
+    DEFAULT_TRANSFORMER_MODEL,
+    BackgroundPredictor,
+    ModelLoading,
+    SklearnPredictor,
+    TransformerPredictor,
+)
 
 load_dotenv()
 
@@ -146,11 +152,20 @@ def trend_frequency(timestamps):
 def create_app(predictor=None, youtube_api_key=None):
     """Build the Flask app. Tests inject a predictor and API key; production loads them from config."""
     if predictor is None:
-        predictor = load_configured_predictor()
-    api_key = youtube_api_key if youtube_api_key is not None else os.getenv('YOUTUBE_API_KEY', '')
+        # Load in the background so the server accepts connections immediately; predictions wait for it
+        wait_seconds = float(os.getenv('MODEL_LOAD_WAIT_SECONDS', '120'))
+        predictor = BackgroundPredictor(load_configured_predictor, timeout=wait_seconds)
+    # Trimmed: a key pasted into Secret Manager or .env followed by Enter carries a line break YouTube rejects
+    api_key = (youtube_api_key if youtube_api_key is not None else os.getenv('YOUTUBE_API_KEY', '')).strip()
 
     app = Flask(__name__)
     CORS(app)  # The extension calls from a chrome-extension:// origin; no cookies or auth are involved
+
+    @app.errorhandler(ModelLoading)
+    def model_still_loading(_error):
+        response = jsonify({'error': 'The sentiment model is still loading. Try again in a few seconds.'})
+        response.headers['Retry-After'] = '10'
+        return response, 503
 
     def predict_sentiments(texts):
         return predictor.predict(texts)
@@ -173,6 +188,7 @@ def create_app(predictor=None, youtube_api_key=None):
         return jsonify({
             'status': 'ok',
             'model': predictor.name,
+            'model_loaded': getattr(predictor, 'loaded', True),
             'youtube_api_key_configured': bool(api_key),
         })
 
@@ -198,6 +214,8 @@ def create_app(predictor=None, youtube_api_key=None):
             return error
         try:
             sentiments = predict_sentiments(texts)
+        except ModelLoading:
+            raise
         except Exception as e:
             app.logger.exception('Prediction failed')
             return jsonify({"error": f"Prediction failed: {e}"}), 500
@@ -215,6 +233,8 @@ def create_app(predictor=None, youtube_api_key=None):
             return jsonify({'error': 'Each comment needs "text" and "timestamp"'}), 400
         try:
             sentiments = predict_sentiments(texts)
+        except ModelLoading:
+            raise
         except Exception as e:
             app.logger.exception('Prediction failed')
             return jsonify({"error": f"Prediction failed: {e}"}), 500

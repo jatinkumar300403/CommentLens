@@ -32,5 +32,6 @@ USER appuser
 
 EXPOSE 8080
 # Listen on $PORT, which Cloud Run sets (8080 when run anywhere else).
-# One worker: each holds its own copy of the model in memory. Threads handle concurrent requests.
-CMD ["sh", "-c", "exec gunicorn --bind 0.0.0.0:${PORT:-8080} --workers 1 --threads 4 --timeout 180 --preload 'app:create_app()'"]
+# One worker and no --preload: preloading loads the model in the parent process and forks it, which
+# duplicated much of its memory and got the instance killed at Cloud Run's 2 GiB limit.
+CMD ["sh", "-c", "exec gunicorn --bind 0.0.0.0:${PORT:-8080} --workers 1 --threads 4 --timeout 180 'app:create_app()'"]

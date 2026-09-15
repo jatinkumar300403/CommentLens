@@ -4,6 +4,7 @@ Two interchangeable implementations, both mapping a comment to -1 negative, 0 ne
 the course's TF-IDF + LightGBM pair, and a pretrained multilingual social-media transformer.
 """
 import re
+import threading
 
 from src.data.text_cleaning import preprocess_comment
 
@@ -47,6 +48,9 @@ class TransformerPredictor:
         self.model = AutoModelForSequenceClassification.from_pretrained(model_name)
         self.model.eval()
         self.sentiment_by_id = self._label_map(self.model.config.id2label)
+        # One inference at a time: on a 2-vCPU instance parallel runs add no speed, only memory,
+        # and concurrent popup and badge requests pushed Cloud Run past its 2 GiB limit.
+        self._lock = threading.Lock()
 
     @staticmethod
     def _label_map(id2label):
@@ -64,12 +68,56 @@ class TransformerPredictor:
 
     def predict(self, texts):
         sentiments = []
-        for start in range(0, len(texts), self.batch_size):
-            batch = [self._normalise(str(text)) for text in texts[start:start + self.batch_size]]
-            encoded = self.tokenizer(
-                batch, padding=True, truncation=True, max_length=self.max_length, return_tensors='pt'
-            )
-            with self.torch.inference_mode():
-                logits = self.model(**encoded).logits
-            sentiments.extend(self.sentiment_by_id[int(i)] for i in logits.argmax(dim=-1))
+        with self._lock:
+            for start in range(0, len(texts), self.batch_size):
+                batch = [self._normalise(str(text)) for text in texts[start:start + self.batch_size]]
+                encoded = self.tokenizer(
+                    batch, padding=True, truncation=True, max_length=self.max_length, return_tensors='pt'
+                )
+                with self.torch.inference_mode():
+                    logits = self.model(**encoded).logits
+                sentiments.extend(self.sentiment_by_id[int(i)] for i in logits.argmax(dim=-1))
         return sentiments
+
+
+class ModelLoading(Exception):
+    """The model is still loading in the background."""
+
+
+class BackgroundPredictor:
+    """Loads a predictor in a background thread so the API accepts connections straight away.
+
+    A cold Cloud Run instance needs up to a minute to load the transformer. Loading it before the
+    server opens its port makes Cloud Run reject requests for that minute; loading it afterwards lets
+    requests that don't need the model (comments, charts) answer at once while predictions wait.
+    """
+
+    def __init__(self, loader, timeout=120.0):
+        self.timeout = timeout
+        self._predictor = None
+        self._error = None
+        self._ready = threading.Event()
+        threading.Thread(target=self._load, args=(loader,), name='model-loader', daemon=True).start()
+
+    def _load(self, loader):
+        try:
+            self._predictor = loader()
+        except Exception as error:  # re-raised to callers of predict()
+            self._error = error
+        finally:
+            self._ready.set()
+
+    @property
+    def loaded(self):
+        return self._ready.is_set() and self._error is None
+
+    @property
+    def name(self):
+        return self._predictor.name if self._predictor is not None else 'loading'
+
+    def predict(self, texts):
+        if not self._ready.wait(self.timeout):
+            raise ModelLoading()
+        if self._error is not None:
+            raise self._error
+        return self._predictor.predict(texts)

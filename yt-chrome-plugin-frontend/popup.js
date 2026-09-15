@@ -24,16 +24,16 @@ document.addEventListener('DOMContentLoaded', async () => {
   try {
     setStatus('Fetching comments…');
     const query = new URLSearchParams({ video_id: videoId, max_comments: MAX_COMMENTS });
-    const { comments } = await requestJson(`${apiUrl}/comments?${query}`);
+    const { comments } = await withRetry(() => requestJson(`${apiUrl}/comments?${query}`));
     if (comments.length === 0) {
       setStatus('No comments found for this video (or comments are turned off).');
       return;
     }
 
     setStatus(`Analysing ${comments.length} comments…`);
-    const predictions = await postJson(`${apiUrl}/predict_with_timestamps`, {
+    const predictions = await withRetry(() => postJson(`${apiUrl}/predict_with_timestamps`, {
       comments: comments.map(({ text, timestamp }) => ({ text, timestamp })),
-    });
+    }));
 
     const counts = renderResults(comments, predictions);
     setStatus('');
@@ -68,7 +68,11 @@ async function requestJson(url, options = {}) {
     throw new Error(`Cannot reach the API at ${new URL(url).origin}. Is it running?`);
   }
   const body = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(body.error || `API returned HTTP ${response.status}`);
+  if (!response.ok) {
+    const error = new Error(body.error || `API returned HTTP ${response.status}`);
+    error.retryable = response.status === 503; // Cloud Run starting an instance, or the model still loading
+    throw error;
+  }
   return body;
 }
 
@@ -78,6 +82,18 @@ function postJson(url, payload) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
   });
+}
+
+async function withRetry(request, attempts = 7) {
+  for (let attempt = 1; ; attempt += 1) {
+    try {
+      return await request();
+    } catch (error) {
+      if (!error.retryable || attempt === attempts) throw error;
+      setStatus(`The API is waking up, retrying in 10 seconds (${attempt}/${attempts - 1})…`);
+      await new Promise((resolve) => setTimeout(resolve, 10000));
+    }
+  }
 }
 
 async function loadChart(imageId, url, payload) {

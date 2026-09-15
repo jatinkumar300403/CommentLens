@@ -1,6 +1,9 @@
+import threading
+
 import pytest
 
 from app import create_app
+from src.model.predictors import BackgroundPredictor
 
 PNG_SIGNATURE = b'\x89PNG\r\n\x1a\n'
 
@@ -173,3 +176,40 @@ def test_comments_surfaces_youtube_errors_as_bad_gateway(client, monkeypatch):
 
     assert response.status_code == 502
     assert response.get_json()['error'] == 'API key not valid.'
+
+
+def test_predictions_return_503_with_retry_after_while_the_model_loads():
+    release = threading.Event()
+
+    def slow_loader():
+        release.wait(5)
+        return KeywordPredictor()
+
+    client = create_app(predictor=BackgroundPredictor(slow_loader, timeout=0.05), youtube_api_key='k').test_client()
+
+    response = client.post('/predict', json={'comments': ['good']})
+    health = client.get('/health').get_json()
+    release.set()
+
+    assert response.status_code == 503
+    assert response.headers['Retry-After'] == '10'
+    assert health['model_loaded'] is False
+
+
+def test_health_reports_a_ready_model(client):
+    assert client.get('/health').get_json()['model_loaded'] is True
+
+
+def test_api_key_is_trimmed_of_spaces_and_line_breaks(monkeypatch):
+    monkeypatch.setenv('YOUTUBE_API_KEY', '  test-key' + chr(10))
+    calls = []
+
+    def fake_get(url, params, timeout):
+        calls.append(params)
+        return FakeResponse({'items': []})
+
+    monkeypatch.setattr('app.requests.get', fake_get)
+
+    create_app(predictor=KeywordPredictor()).test_client().get('/comments?video_id=gwNPV882tkc')
+
+    assert calls[0]['key'] == 'test-key'

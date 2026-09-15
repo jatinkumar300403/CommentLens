@@ -1,6 +1,9 @@
-import numpy as np
+import threading
 
-from src.model.predictors import SklearnPredictor, TransformerPredictor
+import numpy as np
+import pytest
+
+from src.model.predictors import BackgroundPredictor, ModelLoading, SklearnPredictor, TransformerPredictor
 
 
 class PassThroughVectorizer:
@@ -51,3 +54,50 @@ def test_normalise_replaces_handles_and_links_but_keeps_emoji():
 
 def test_normalise_keeps_empty_comments_tokenizable():
     assert TransformerPredictor._normalise('   ') == '.'
+
+
+class StubPredictor:
+    name = 'stub'
+
+    def predict(self, texts):
+        return [0] * len(texts)
+
+
+def slow_loader(release):
+    def load():
+        release.wait(5)
+        return StubPredictor()
+    return load
+
+
+def test_background_predictor_waits_for_the_model_then_predicts():
+    release = threading.Event()
+    predictor = BackgroundPredictor(slow_loader(release), timeout=5)
+    assert not predictor.loaded
+    assert predictor.name == 'loading'
+
+    release.set()
+
+    assert predictor.predict(['a', 'b']) == [0, 0]
+    assert predictor.loaded
+    assert predictor.name == 'stub'
+
+
+def test_background_predictor_gives_up_while_still_loading():
+    release = threading.Event()
+    predictor = BackgroundPredictor(slow_loader(release), timeout=0.05)
+
+    with pytest.raises(ModelLoading):
+        predictor.predict(['a'])
+    release.set()
+
+
+def test_background_predictor_surfaces_load_errors():
+    def broken_loader():
+        raise RuntimeError('model file missing')
+
+    predictor = BackgroundPredictor(broken_loader, timeout=5)
+
+    with pytest.raises(RuntimeError, match='model file missing'):
+        predictor.predict(['a'])
+    assert not predictor.loaded
